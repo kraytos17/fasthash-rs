@@ -1,236 +1,210 @@
 // Copyright 2025 Soubhik Gon
 #include "core/command.hpp"
+
+#include <charconv>
+#include <print>
+#include <string_view>
+
 #include "core/parser.hpp"
-#define __SET__ "SET"
-#define __GET__ "GET"
-#define __EXPIRE__ "EXPIRE"
-#define __TTL__ "TTL"
-#define __SETEX__ "SETEX"
-#define __DEL__ "DEL"
-#define __KEYS__ "KEYS"
-#define __EXISTS__ "EXISTS"
-#define __PERSIST__ "PERSIST"
-#define __FLUSHALL__ "FLUSHALL"
-#define __SAVE__ "SAVE"
-#define __ASAVE__ "ASAVE"
-#define __LOAD__ "LOAD"
 
-Command Command::parse(const std::string &line) {
-  Command cmd;
-  cmd.args = parser::tokenize(line);
-  if (cmd.args.empty()) {
-    cmd.type = INVALID;
+using namespace std::string_view_literals;
+
+namespace {
+    constexpr auto cmd_map = std::to_array<std::pair<std::string_view, Command::Type>>(
+        {{"SET"sv, Command::Type::SET},
+         {"GET"sv, Command::Type::GET},
+         {"DEL"sv, Command::Type::DEL},
+         {"EXPIRE"sv, Command::Type::EXPIRE},
+         {"TTL"sv, Command::Type::TTL},
+         {"SETEX"sv, Command::Type::SETEX},
+         {"KEYS"sv, Command::Type::KEYS},
+         {"EXISTS"sv, Command::Type::EXISTS},
+         {"PERSIST"sv, Command::Type::PERSIST},
+         {"FLUSHALL"sv, Command::Type::FLUSHALL},
+         {"SAVE"sv, Command::Type::SAVE},
+         {"ASAVE"sv, Command::Type::ASAVE},
+         {"LOAD"sv, Command::Type::LOAD}});
+} // namespace
+
+Command Command::parse(std::string_view line) {
+    Command cmd{};
+    cmd.args = parser::tokenize(line);
+    if (cmd.args.empty()) {
+        return cmd;
+    }
+
+    auto cmd_name = parser::to_upper(cmd.args[0]);
+    for (const auto& [name, type]: cmd_map) {
+        if (name == cmd_name) {
+            cmd.type = type;
+            return cmd;
+        }
+    }
+
     return cmd;
-  }
-
-  std::string cmd_name = parser::to_upper(cmd.args[0]);
-
-  if (cmd_name == __SET__)
-    cmd.type = Command::Type::SET;
-  else if (cmd_name == __GET__)
-    cmd.type = Command::Type::GET;
-  else if (cmd_name == __DEL__)
-    cmd.type = Command::Type::DEL;
-  else if (cmd_name == __EXPIRE__)
-    cmd.type = Command::Type::EXPIRE;
-  else if (cmd_name == __TTL__)
-    cmd.type = Command::Type::TTL;
-  else if (cmd_name == __SETEX__)
-    cmd.type = Command::Type::SETEX;
-  else if (cmd_name == __KEYS__)
-    cmd.type = Command::Type::KEYS;
-  else if (cmd_name == __PERSIST__)
-    cmd.type = Command::Type::PERSIST;
-  else if (cmd_name == __FLUSHALL__)
-    cmd.type = Command::Type::FLUSHALL;
-  else if (cmd_name == __SAVE__)
-    cmd.type = Command::Type::SAVE;
-  else if (cmd_name == __ASAVE__)
-    cmd.type = Command::Type::ASAVE;
-  else if (cmd_name == __LOAD__)
-    cmd.type = Command::Type::LOAD;
-  else
-    cmd.type = INVALID;
-
-  return cmd;
 }
 
-void Command::execute(FastHash &store) const {
-  switch (type) {
-  case Command::Type::SET:
-    if (args.size() != 3) {
-      std::cout << "ERROR: SET usage: SET key value\n";
-      break;
-    }
-    store.set(args[1], args[2]);
-    std::cout << "OK\n";
-    break;
+void Command::execute(FastHash& store) const {
+    using enum Type;
 
-  case Command::Type::GET: {
-    if (args.size() != 2) {
-      std::cout << "ERROR: GET usage: GET key\n";
-      break;
-    }
-    auto val = store.get(args[1]);
-    if (val.has_value())
-      std::cout << val.value() << "\n";
-    else
-      std::cout << "(nil)\n";
-    break;
-  }
+    const auto print_error = [](const std::string_view usage) { std::println("ERROR: {}", usage); };
+    switch (type) {
+        case SET:
+            if (args.size() != 3) {
+                print_error("SET usage: SET key value");
+                break;
+            }
 
-  case Command::Type::DEL:
-    if (args.size() != 2) {
-      std::cout << "ERROR: DEL usage: DEL key\n";
-      break;
-    }
-    if (store.del(args[1]))
-      std::cout << "OK\n";
-    else
-      std::cout << "(nil)\n";
-    break;
+            store.set(args[1], args[2]);
+            std::println("OK");
+            break;
 
-  case Command::Type::EXPIRE:
-    if (args.size() != 3) {
-      std::cout << "ERROR: EXPIRE usage: EXPIRE key seconds\n";
-      break;
-    }
-    try {
-      int seconds = std::stoi(args[2]);
-      if (store.expire(args[1], seconds))
-        std::cout << "OK\n";
-      else
-        std::cout << "(nil)\n";
-    } catch (...) {
-      std::cout << "ERROR: invalid seconds\n";
-    }
-    break;
+        case GET:
+            if (args.size() != 2) {
+                print_error("GET usage: GET key");
+                break;
+            }
+            if (auto val = store.get(args[1])) {
+                std::println("{}", *val);
+            } else {
+                std::println("(nil)");
+            }
+            break;
 
-  case Command::Type::TTL:
-    if (args.size() != 2) {
-      std::cout << "ERROR: TTL usage: TTL key\n";
-      break;
-    }
-    {
-      int remaining = store.ttl(args[1]);
-      if (remaining == -2)
-        std::cout << "(nil)\n";
-      else if (remaining == -1)
-        std::cout << "-1\n";
-      else
-        std::cout << remaining << "\n";
-    }
-    break;
+        case DEL:
+            if (args.size() != 2) {
+                print_error("DEL usage: DEL key");
+                break;
+            }
 
-  case Command::Type::SETEX:
-    if (args.size() != 4) {
-      std::cout << "ERROR: SETEX usage: SETEX key seconds value\n";
-      break;
-    }
-    try {
-      int seconds = std::stoi(args[2]);
-      store.set(args[1], args[3], seconds);
-      std::cout << "OK\n";
-    } catch (...) {
-      std::cout << "ERROR: invalid seconds\n";
-    }
-    break;
+            std::println("{}", store.del(args[1]) ? "OK" : "(nil)");
+            break;
 
-  case Command::Type::KEYS:
-    if (args.size() != 2) {
-      std::cout << "ERROR: Usage: KEYS pattern\n";
-      return;
-    }
-    for (const auto &key : store.keys(args[1]))
-      std::cout << key << "\n";
-    break;
+        case EXPIRE: {
+            if (args.size() != 3) {
+                print_error("EXPIRE usage: EXPIRE key seconds");
+                break;
+            }
 
-  case Command::Type::EXISTS:
-    if (args.size() != 2) {
-      std::cout << "ERROR: Usage: EXISTS key\n";
-      return;
-    }
-    std::cout << (store.exists(args[1]) ? "1\n" : "0\n");
-    break;
+            int seconds;
+            auto [ptr, ec] =
+                std::from_chars(args[2].data(), args[2].data() + args[2].size(), seconds);
 
-  case Command::Type::PERSIST:
-    if (args.size() != 2) {
-      std::cout << "ERROR: Usage: PERSIST key\n";
-      return;
-    }
-    std::cout << (store.persist(args[1]) ? "1\n" : "0\n");
-    break;
+            if (ec == std::errc()) {
+                std::println("{}", store.expire(args[1], seconds) ? "OK" : "(nil)");
+            } else {
+                print_error("invalid seconds");
+            }
+            break;
+        }
 
-  case Command::Type::FLUSHALL:
-    if (args.size() != 1) {
-      std::cout << "ERROR: FLUSHALL takes no arguments\n";
-      return;
-    }
-    store.flush_all();
-    std::cout << "OK\n";
-    break;
+        case TTL: {
+            if (args.size() != 2) {
+                print_error("TTL usage: TTL key");
+                break;
+            }
+            switch (int remaining = store.ttl(args[1])) {
+                case -2:
+                    std::println("(nil)");
+                    break;
+                case -1:
+                    std::println("-1");
+                    break;
+                default:
+                    std::println("{}", remaining);
+                    break;
+            }
+            break;
+        }
 
-  case Command::Type::SAVE:
-    if (args.size() != 1) {
-      std::cout << "ERROR: SAVE takes no arguments\n";
-      return;
-    }
-    if (store.save()) {
-      std::cout << "OK\n";
-    } else {
-      std::cout << "ERROR: Failed to save\n";
-    }
-    break;
+        case SETEX: {
+            if (args.size() != 4) {
+                print_error("SETEX usage: SETEX key seconds value");
+                break;
+            }
 
-  case Command::Type::ASAVE:
-    if (args.size() != 1) {
-      std::cout << "ERROR: ASAVE takes no arguments\n";
-      return;
-    }
-    if (store.save_async()) {
-      std::cout << "OK\n";
-    } else {
-      std::cout << "ERROR: Failed to save asynchronously\n";
-    }
-    break;
+            int seconds;
+            auto [ptr, ec] =
+                std::from_chars(args[2].data(), args[2].data() + args[2].size(), seconds);
 
-  case Command::Type::LOAD:
-    if (args.size() != 1) {
-      std::cout << "ERROR: LOAD takes no arguments\n";
-      return;
-    }
-    if (store.load()) {
-      std::cout << "OK\n";
-    } else {
-      std::cout << "ERROR: Failed to load dumpfile\n";
-    }
-    break;
+            if (ec == std::errc()) {
+                store.set(args[1], args[3], seconds);
+                std::println("OK");
+            } else {
+                print_error("invalid seconds");
+            }
+            break;
+        }
 
-  default:
-    std::cout << "ERROR: unknown command\n";
-  }
+        case KEYS: {
+            if (args.size() != 2) {
+                print_error("Usage: KEYS pattern");
+                break;
+            }
+            for (const auto& key: store.keys(args[1])) {
+                std::println("{}", key);
+            }
+            break;
+        }
+
+        case EXISTS:
+            if (args.size() != 2) {
+                print_error("Usage: EXISTS key");
+                break;
+            }
+
+            std::println("{}", store.exists(args[1]) ? 1 : 0);
+            break;
+
+        case PERSIST:
+            if (args.size() != 2) {
+                print_error("Usage: PERSIST key");
+                break;
+            }
+
+            std::println("{}", store.persist(args[1]) ? 1 : 0);
+            break;
+
+        case FLUSHALL:
+            if (args.size() != 1) {
+                print_error("FLUSHALL takes no arguments");
+                break;
+            }
+
+            store.flush_all();
+            std::println("OK");
+            break;
+
+        case SAVE:
+            if (args.size() != 1) {
+                print_error("SAVE takes no arguments");
+                break;
+            }
+
+            std::println("{}", store.save() ? "OK" : "ERROR: Failed to save");
+            break;
+
+        case ASAVE:
+            if (args.size() != 1) {
+                print_error("ASAVE takes no arguments");
+                break;
+            }
+
+            std::println("{}", store.save_async() ? "OK" : "ERROR: Failed to save asynchronously");
+            break;
+
+        case LOAD:
+            if (args.size() != 1) {
+                print_error("LOAD takes no arguments");
+                break;
+            }
+
+            std::println("{}", store.load() ? "OK" : "ERROR: Failed to load dumpfile");
+            break;
+
+        case INVALID:
+        default:
+            print_error("unknown command");
+            break;
+    }
 }
-
-// void Command::handle_keys(FastHash &store, const std::vector<std::string>
-// &args)
-// {
-//     if (args.size() != 2)
-//     {
-//         std::cout << "ERROR: Usage: KEYS pattern\n";
-//         return;
-//     }
-
-//     std::vector<std::string> matches = store.keys(args[1]);
-
-//     if (matches.empty())
-//     {
-//         std::cout << "(empty list)\n";
-//     }
-//     else
-//     {
-//         for (const auto &k : matches)
-//         {
-//             std::cout << k << "\n";
-//         }
-//     }
-// }

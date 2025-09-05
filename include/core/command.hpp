@@ -1,33 +1,37 @@
 // Copyright 2025 Soubhik Gon
 #pragma once
-#include "fast-hash.hpp"
-#include <iostream>
-#include <sstream>
+
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "fast-hash.hpp"
+
+/**
+ * @brief Represents a parsed command and its arguments.
+ */
 class Command {
 public:
-  enum Type {
-    SET,
-    SETEX,
-    GET,
-    DEL,
-    EXPIRE,
-    TTL,
-    KEYS,
-    EXISTS,
-    PERSIST,
-    FLUSHALL,
-    SAVE,
-    ASAVE,
-    LOAD,
-    INVALID
-  };
-  Type type;
-  std::vector<std::string> args;
-  // void handle_keys(FastHash &store, const std::vector<std::string> &tokens);
+    enum class Type {
+        SET,
+        SETEX,
+        GET,
+        DEL,
+        EXPIRE,
+        TTL,
+        KEYS,
+        EXISTS,
+        PERSIST,
+        FLUSHALL,
+        SAVE,
+        ASAVE,
+        LOAD,
+        INVALID
+    };
 
-  static Command parse(const std::string &line);
-  void execute(FastHash &store) const;
+    Type type{Type::INVALID};
+    std::vector<std::string> args;
+
+    [[nodiscard]] static Command parse(std::string_view line);
+    void execute(FastHash& store) const;
 };

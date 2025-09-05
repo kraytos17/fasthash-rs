@@ -1,11 +1,11 @@
 // Copyright 2025 Soubhik Gon
 #pragma once
-#include <algorithm>
-#include <sstream>
+
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace parser {
-std::vector<std::string> tokenize(const std::string &line);
-std::string to_upper(const std::string &str);
+    [[nodiscard]] std::vector<std::string> tokenize(std::string_view line);
+    [[nodiscard]] std::string to_upper(std::string_view str);
 } // namespace parser

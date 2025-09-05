@@ -1,52 +1,79 @@
 #include "persistence/aof/aof.hpp"
-#include <iostream>
+
+#include <format>
+#include <print>
 #include <unistd.h>
 
-AOFLogger::AOFLogger(const std::string &path, AOFSyncPolicy policy)
-    : sync_policy_(policy), c_file_(nullptr) {
-  file_.open(path, std::ios::app);
-  if (!file_.is_open()) {
-    throw std::runtime_error("Failed to open AOF log file: " + path);
-  }
-
-  c_file_ = std::fopen(path.c_str(), "a");
-  if (!c_file_) {
-    throw std::runtime_error("Failed to open C-style AOF file handle.");
-  }
-}
-
-AOFLogger::~AOFLogger() {
-  if (file_.is_open()) {
-    file_.flush();
-    file_.close();
-  }
-
-  if (c_file_) {
-    std::fflush(c_file_);
-    std::fclose(c_file_);
-  }
-}
-
-void AOFLogger::log(const std::string &entry) {
-  std::lock_guard<std::mutex> lock(mu_);
-  // std::cout << "logging in aof..." << std::endl;
-  file_ << entry << "\n";
-
-  switch (sync_policy_) {
-  case AOFSyncPolicy::ALWAYS:
-    file_.flush();
-    if (c_file_) {
-      fflush(c_file_);
-      fsync(fileno(c_file_));
+AOFLogger::AOFLogger(const std::string& path, AOFSyncPolicy policy) noexcept :
+    m_syncPolicy(policy), m_lastSync(std::chrono::steady_clock::now()) {
+    m_cFile = std::fopen(path.c_str(), "a");
+    if (!m_cFile) {
+        log_error(std::format("Failed to open AOF file: {}", path));
     }
-    break;
+}
 
-  case AOFSyncPolicy::EVERYSEC:
-    // optionally background thread
-    break;
+AOFLogger::~AOFLogger() noexcept {
+    if (m_cFile) {
+        flush(true);
+        std::fclose(m_cFile);
+        m_cFile = nullptr;
+    }
+}
 
-  case AOFSyncPolicy::NONE:
-    // no fsync at all
-    break;
-  }
+bool AOFLogger::log(const std::string& entry) noexcept {
+    std::scoped_lock lock(m_mtx);
+    if (!m_cFile) {
+        log_error("AOF file handle is null (write skipped)");
+        return false;
+    }
+
+    if (std::fprintf(m_cFile, "%s\n", entry.c_str()) < 0) {
+        log_error(std::format("Failed to write entry to AOF: {}", entry));
+        return false;
+    }
+
+    handle_sync_policy();
+    return true;
+}
+
+bool AOFLogger::flush(bool force) noexcept {
+    std::scoped_lock lock(m_mtx);
+    if (!m_cFile) {
+        log_error("AOF file handle is null (flush skipped)");
+        return false;
+    }
+    if (std::fflush(m_cFile) != 0) {
+        log_error("fflush() failed on AOF file");
+        return false;
+    }
+    if (force || m_syncPolicy == AOFSyncPolicy::ALWAYS) {
+        if (::fsync(::fileno(m_cFile)) != 0) {
+            log_error("fsync() failed on AOF file");
+            return false;
+        }
+    }
+    return true;
+}
+
+void AOFLogger::handle_sync_policy() noexcept {
+    switch (m_syncPolicy) {
+        case AOFSyncPolicy::ALWAYS:
+            flush(true);
+            break;
+        case AOFSyncPolicy::EVERYSEC: {
+            auto now = std::chrono::steady_clock::now();
+            if (now - m_lastSync >= std::chrono::seconds(1)) {
+                flush(true);
+                m_lastSync = now;
+            }
+            break;
+        }
+        case AOFSyncPolicy::NONE:
+            // Do nothing, rely on OS flush
+            break;
+    }
+}
+
+void AOFLogger::log_error(const std::string& msg) const noexcept {
+    std::print(stderr, "[AOF ERROR] {}\n", msg);
 }

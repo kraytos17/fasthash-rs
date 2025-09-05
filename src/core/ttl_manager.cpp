@@ -1,145 +1,119 @@
-// Copyright 2025 Soubhik Gon
 #include "core/ttl-manager.hpp"
 
-TTLManager::TTLManager() : stop_flag_(false) {
-  this->sweeper_thread_ = std::thread(&TTLManager::sweeper, this);
-}
+TTLManager::TTLManager() : m_sweeperThread([this](std::stop_token token) { sweeper(token); }) {}
 
-TTLManager::~TTLManager() { this->stop(); }
+TTLManager::~TTLManager() { stop(); }
 
 void TTLManager::stop() {
-  {
-    std::lock_guard<std::mutex> lock(this->mutex_);
-    stop_flag_ = true;
-  }
-  cv_.notify_all();
-  if (sweeper_thread_.joinable()) {
-    sweeper_thread_.join();
-  }
-}
-
-void TTLManager::add_expiration(
-    const std::string &key, std::chrono::steady_clock::time_point expiry_time) {
-  std::lock_guard<std::mutex> lock(this->mutex_);
-  expiry_map_[key] = expiry_time;
-  expiry_heap_.push(expire_entry{key, expiry_time});
-  cv_.notify_all();
-}
-
-void TTLManager::remove_expiration(const std::string &key) {
-  std::lock_guard<std::mutex> lock(this->mutex_);
-  expiry_map_.erase(key);
-  // Cannot efficiently remove from priority_queue, so stale entries handled in
-  // sweeper
-}
-
-bool TTLManager::expired(const std::string &key) {
-  std::lock_guard<std::mutex> lock(this->mutex_);
-
-  auto now = std::chrono::steady_clock::now();
-
-  auto it = expiry_map_.find(key);
-  if (it == expiry_map_.end()) {
-    // std::cout << "DEBUG: key '" << key
-    // << "' not found in expiry_map_ → not expired\n";
-    return false;
-  }
-
-  auto expire_time = it->second;
-  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    now.time_since_epoch())
-                    .count();
-  auto expire_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                       expire_time.time_since_epoch())
-                       .count();
-
-  // std::cout << "DEBUG: checking key '" << key << "'\n";
-  // std::cout << "DEBUG: now_ms = " << now_ms << ", expire_ms = " << expire_ms
-  //           << "\n";
-
-  if (now >= expire_time) {
-    // std::cout << "DEBUG: key '" << key << "' is expired → erasing from
-    // map\n";
-    expiry_map_.erase(it);
-    return true;
-  }
-
-  // std::cout << "DEBUG: key '" << key << "' has not yet expired\n";
-  return false;
-}
-
-void TTLManager::sweeper() {
-  std::unique_lock<std::mutex> lock(this->mutex_);
-
-  while (!stop_flag_) {
-    if (expiry_heap_.empty()) {
-      cv_.wait(lock);
-    } else {
-      auto next = expiry_heap_.top();
-      auto now = std::chrono::steady_clock::now();
-
-      if (now >= next.expire_time) {
-        expiry_heap_.pop();
-        auto it = expiry_map_.find(next.key);
-
-        if (it != expiry_map_.end() && it->second <= now) {
-          expiry_map_.erase(it);
-
-          if (on_expire_callback_) {
-            lock.unlock();
-            on_expire_callback_(next.key);
-            lock.lock();
-          }
-
-          std::cout << "[SYSTEM]: Sweeped 1 key in background thread."
-                    << next.key << "\n";
-        }
-      } else {
-        cv_.wait_until(lock, next.expire_time);
-      }
+    m_stopSource.request_stop();
+    m_cv.notify_all();
+    if (m_sweeperThread.joinable()) {
+        m_sweeperThread.join();
     }
-  }
 }
 
-void TTLManager::set_expire_callback(
-    std::function<void(const std::string &)> cb) {
-  this->on_expire_callback_ = cb;
+void TTLManager::add_expiration(std::string_view key,
+                                std::chrono::steady_clock::time_point expire_time) {
+    {
+        std::lock_guard lock(m_mtx);
+        auto [it, inserted] = m_expiryMap.try_emplace(std::string{key}, expire_time);
+        if (inserted || expire_time < it->second) {
+            m_expiryHeap.emplace(it->first, expire_time);
+            it->second = expire_time;
+        }
+    }
+    m_cv.notify_one();
 }
 
-// std::optional<std::chrono::steady_clock::time_point>
-// TTLManager::get_expiry_time(const std::string &key)
-// {
-//     std::lock_guard<std::mutex> lock(mutex_);
-//     auto it = expiry_map_.find(key);
-//     if (it != expiry_map_.end())
-//     {
-//         return it->second;
-//     }
-//     return std::nullopt;
-// }
-
-bool TTLManager::has_expiration(const std::string &key) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return expiry_map_.find(key) != expiry_map_.end();
+void TTLManager::remove_expiration(std::string_view key) {
+    std::lock_guard lock(m_mtx);
+    m_expiryMap.erase(std::string{key});
 }
 
-void TTLManager::clear_all() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  expiry_map_.clear();
+bool TTLManager::expired(std::string_view key) {
+    std::lock_guard lock(m_mtx);
+    if (auto it = m_expiryMap.find(std::string{key}); it != m_expiryMap.end()) {
+        if (std::chrono::steady_clock::now() >= it->second) {
+            m_expiryMap.erase(it);
+            return true;
+        }
+    }
 
-  while (!expiry_heap_.empty()) {
-    expiry_heap_.pop();
-  }
+    return false;
+}
 
-  cv_.notify_all();
+bool TTLManager::has_expiration(std::string_view key) const {
+    std::scoped_lock lock(m_mtx);
+    return m_expiryMap.contains(std::string{key});
 }
 
 std::optional<std::chrono::steady_clock::time_point>
-TTLManager::get_expiry_time(const std::string &key) const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = expiry_map_.find(key);
-  if (it != expiry_map_.end())
-    return it->second;
+TTLManager::get_expiry_time(std::string_view key) const {
+    std::scoped_lock lock(m_mtx);
+    if (auto it = m_expiryMap.find(std::string{key}); it != m_expiryMap.end()) {
+        return it->second;
+    }
 
-  return std::nullopt;
+    return std::nullopt;
+}
+
+void TTLManager::clear_all() {
+    {
+        std::scoped_lock lock(m_mtx);
+        m_expiryMap.clear();
+        m_expiryHeap = decltype(m_expiryHeap){};
+    }
+    m_cv.notify_all();
+}
+
+void TTLManager::set_expire_callback(std::function<void(const std::string&)> cb) {
+    std::scoped_lock s(m_mtx);
+    on_expire_callback = std::move(cb);
+}
+
+void TTLManager::sweeper(std::stop_token token) {
+    constexpr size_t kBatchSize = 100;
+    constexpr auto kYieldDuration = std::chrono::milliseconds(1);
+
+    std::unique_lock lock(m_mtx);
+    while (!token.stop_requested()) {
+        m_cv.wait(lock, [&] { return token.stop_requested() || !m_expiryHeap.empty(); });
+        if (token.stop_requested()) {
+            break;
+        }
+
+        size_t processed = 0;
+        auto now = std::chrono::steady_clock::now();
+        while (processed < kBatchSize && !m_expiryHeap.empty()) {
+            const auto& next = m_expiryHeap.top();
+            if (auto it = m_expiryMap.find(next.key);
+                it == m_expiryMap.end() || it->second != next.expire_time) {
+                m_expiryHeap.pop();
+                continue;
+            }
+
+            if (now >= next.expire_time) {
+                std::string expired_key = next.key;
+                m_expiryHeap.pop();
+                m_expiryMap.erase(expired_key);
+
+                if (on_expire_callback) {
+                    auto callback = std::move(on_expire_callback);
+                    lock.unlock();
+                    callback(expired_key);
+                    lock.lock();
+                }
+
+                ++processed;
+            } else {
+                auto wait_duration = next.expire_time - now;
+                m_cv.wait_for(lock, wait_duration, [&] { return token.stop_requested(); });
+                break;
+            }
+        }
+
+        if (processed == kBatchSize) {
+            m_cv.wait_for(lock, kYieldDuration, [&] { return token.stop_requested(); });
+        }
+    }
 }

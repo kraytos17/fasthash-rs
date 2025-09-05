@@ -1,24 +1,20 @@
 #include <iostream>
-#include <thread>
 #include <mutex>
+#include <thread>
 
 int counter = 0;
 std::mutex mtx;
 
-void incrementSafe()
-{
-    for (int i = 0; i < 1'00'000; ++i)
-    {
-        std::unique_lock<std::mutex> lock(mtx);
+void incrementSafe() {
+    for (int i = 0; i < 1'00'000; ++i) {
+        std::unique_lock lock(mtx);
         ++counter;
         lock.unlock();
     }
 }
 
-int main()
-{
-    for (int i = 0; i < 1000; ++i)
-    {
+int main() {
+    for (int i = 0; i < 1000; ++i) {
         counter = 0;
         std::thread t1(incrementSafe);
         std::thread t2(incrementSafe);

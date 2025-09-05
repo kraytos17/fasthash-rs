@@ -1,18 +1,21 @@
-cmake_minimum_required(VERSION 3.10)
-project(FastHash)
+cmake_minimum_required(VERSION 3.25.0)
+project(FastHash VERSION 1.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_DEBUG_POSTFIX "-d")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(FetchContent)
-FetchContent_Declare(
-  json
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG v3.11.2
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json
+    GIT_TAG v3.12.0
 )
-FetchContent_MakeAvailable(json)
 
-include_directories(include)
+FetchContent_MakeAvailable(nlohmann_json)
 
 add_executable(FastHash
     src/main.cpp
@@ -23,4 +26,20 @@ add_executable(FastHash
     src/persistence/aof/aof.cpp
 )
 
-target_link_libraries(FastHash PRIVATE nlohmann_json::nlohmann_json)
+target_include_directories(FastHash
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(FastHash
+    PRIVATE
+    nlohmann_json::nlohmann_json
+)
+
+if (MSVC)
+    target_compile_options(FastHash PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(FastHash PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+enable_testing()
