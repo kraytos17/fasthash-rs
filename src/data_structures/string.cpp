@@ -1,5 +1,3 @@
-#include "data_structures/string.hpp"
-
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -10,11 +8,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
+
+#include "data_structures/string.hpp"
 
 namespace fasthash {
     inline std::string to_chars_string(int64_t value) {
@@ -49,8 +50,8 @@ namespace fasthash {
             m_encoding = Encoding::EMBSTR;
             m_is_embstr = true;
         } else {
-            new (&m_data.raw_str_val)
-                RawString(std::make_unique<char[]>(str.size()), str.size(), str.size());
+            std::construct_at(
+                &m_data.raw_str_val, std::make_unique<char[]>(str.size()), str.size(), str.size());
 
             std::copy(str.begin(), str.end(), m_data.raw_str_val.ptr.get());
             m_encoding = Encoding::RAW;
@@ -77,8 +78,10 @@ namespace fasthash {
                 m_data.int_val = other.m_data.int_val;
             } else if (other.m_encoding == Encoding::RAW) {
                 const RawString& o_raw = other.m_data.raw_str_val;
-                new (&m_data.raw_str_val) RawString(
-                    std::make_unique<char[]>(o_raw.capacity), o_raw.capacity, o_raw.length);
+                std::construct_at(&m_data.raw_str_val,
+                                  std::make_unique<char[]>(o_raw.capacity),
+                                  o_raw.capacity,
+                                  o_raw.length);
 
                 std::copy_n(o_raw.ptr.get(), o_raw.length, m_data.raw_str_val.ptr.get());
             }
@@ -90,7 +93,7 @@ namespace fasthash {
             return *this;
         }
         if (!m_is_embstr && m_encoding == Encoding::RAW) {
-            m_data.raw_str_val.~RawString();
+            std::destroy_at(&m_data.raw_str_val);
         }
         if (other.m_is_embstr) {
             std::copy_n(other.m_embstr.begin(), other.m_embstr_len, m_embstr.begin());
@@ -105,8 +108,10 @@ namespace fasthash {
                 m_data.int_val = other.m_data.int_val;
             } else if (other.m_encoding == Encoding::RAW) {
                 const RawString& o_raw = other.m_data.raw_str_val;
-                new (&m_data.raw_str_val) RawString(
-                    std::make_unique<char[]>(o_raw.capacity), o_raw.capacity, o_raw.length);
+                std::construct_at(&m_data.raw_str_val,
+                                  std::make_unique<char[]>(o_raw.capacity),
+                                  o_raw.capacity,
+                                  o_raw.length);
 
                 std::copy_n(o_raw.ptr.get(), o_raw.length, m_data.raw_str_val.ptr.get());
             }
@@ -124,7 +129,7 @@ namespace fasthash {
             if (other.m_encoding == Encoding::INT) {
                 m_data.int_val = other.m_data.int_val;
             } else if (other.m_encoding == Encoding::RAW) {
-                new (&m_data.raw_str_val) RawString(std::move(other.m_data.raw_str_val));
+                std::construct_at(&m_data.raw_str_val, std::move(other.m_data.raw_str_val));
             }
         }
 
@@ -138,7 +143,7 @@ namespace fasthash {
             return *this;
         }
         if (!m_is_embstr && m_encoding == Encoding::RAW) {
-            m_data.raw_str_val.~RawString();
+            std::destroy_at(&m_data.raw_str_val);
         }
 
         m_is_embstr = other.m_is_embstr;
@@ -151,7 +156,7 @@ namespace fasthash {
             if (other.m_encoding == Encoding::INT) {
                 m_data.int_val = other.m_data.int_val;
             } else if (other.m_encoding == Encoding::RAW) {
-                new (&m_data.raw_str_val) RawString(std::move(other.m_data.raw_str_val));
+                std::construct_at(&m_data.raw_str_val, std::move(other.m_data.raw_str_val));
             }
         }
 
@@ -270,7 +275,7 @@ namespace fasthash {
                 throw std::overflow_error("increment would overflow");
             }
             if (!m_is_embstr && m_encoding == Encoding::RAW) {
-                m_data.raw_str_val.~RawString();
+                std::destroy_at(&m_data.raw_str_val);
             }
 
             m_data.int_val = res;
@@ -439,7 +444,7 @@ namespace fasthash {
                 m_embstr_len = raw.length;
                 m_is_embstr = true;
                 m_encoding = Encoding::EMBSTR;
-                raw.~RawString();
+                std::destroy_at(&raw);
             } else {
                 auto new_ptr = std::make_unique<char[]>(raw.length);
                 std::copy_n(raw.ptr.get(), raw.length, new_ptr.get());
@@ -451,7 +456,7 @@ namespace fasthash {
 
     void FHString::clear() noexcept {
         if (!m_is_embstr && m_encoding == Encoding::RAW) {
-            m_data.raw_str_val.~RawString();
+            std::destroy_at(&m_data.raw_str_val);
         }
 
         m_encoding = Encoding::RAW;
@@ -485,10 +490,10 @@ namespace fasthash {
         }
 
         if (m_encoding == Encoding::RAW) {
-            m_data.raw_str_val.~RawString();
+            std::destroy_at(&m_data.raw_str_val);
         }
 
-        new (&m_data.raw_str_val) RawString(std::move(ptr), new_capacity, len);
+        std::construct_at(&m_data.raw_str_val, std::move(ptr), new_capacity, len);
         m_encoding = Encoding::RAW;
         m_is_embstr = false;
     }
@@ -526,7 +531,7 @@ namespace fasthash {
 
     void FHString::free_raw_string() {
         if (m_encoding == Encoding::RAW) {
-            m_data.raw_str_val.~RawString();
+            std::destroy_at(&m_data.raw_str_val);
         }
     }
 
