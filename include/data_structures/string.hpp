@@ -114,5 +114,6 @@ namespace fasthash {
         size_t normalize_index(ssize_t idx, size_t length) const noexcept;
         int64_t parse_int(const char* s, size_t len, bool& ok) const;
         long double parse_ld(const char* s, size_t len, bool& ok) const;
+        long double increment_float(long double inc);
     };
 }  // namespace fasthash

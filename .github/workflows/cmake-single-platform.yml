@@ -1,4 +1,4 @@
-name: Build and Test FastHash (C++)
+name: Build and Test FastHash (C++23)
 
 on:
   push:
@@ -12,22 +12,43 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y cmake g++ make
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake make g++ clang
+
+    - name: Set compiler
+      run: |
+        if [ "${{ matrix.compiler }}" = "gcc" ]; then
+          export CXX=g++
+          export CC=gcc
+        else
+          export CXX=clang++
+          export CC=clang
+        fi
+        echo "CXX=$CXX" >> $GITHUB_ENV
+        echo "CC=$CC" >> $GITHUB_ENV
 
     - name: Clean previous build files
       run: rm -rf build
 
     - name: Configure CMake
-      run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+      run: cmake -B build \
+                 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+                 -DCMAKE_CXX_STANDARD=23 \
+                 -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+                 -DCMAKE_CXX_EXTENSIONS=OFF
 
     - name: Build project
-      run: cmake --build build --config ${{ env.BUILD_TYPE }}
+      run: cmake --build build --config ${{ env.BUILD_TYPE }} -j$(nproc)
 
     - name: Run tests (if defined)
       run: |

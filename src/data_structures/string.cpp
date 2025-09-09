@@ -42,8 +42,8 @@ namespace fasthash {
         m_data.int_val = 0;
     }
 
-    FHString::FHString(std::string_view str) noexcept :
-      m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
+    FHString::FHString(std::string_view str) noexcept
+      : m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
         if (str.size() <= EMBSTR_LIMIT) {
             std::copy(str.begin(), str.end(), m_embstr.begin());
             m_embstr_len = str.size();
@@ -64,8 +64,8 @@ namespace fasthash {
         m_data.int_val = value;
     }
 
-    FHString::FHString(const FHString& other) :
-      m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
+    FHString::FHString(const FHString& other)
+      : m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
         if (other.m_is_embstr) {
             std::copy_n(other.m_embstr.begin(), other.m_embstr_len, m_embstr.begin());
             m_embstr_len = other.m_embstr_len;
@@ -120,8 +120,8 @@ namespace fasthash {
         return *this;
     }
 
-    FHString::FHString(FHString&& other) noexcept :
-      m_embstr_len(0), m_encoding(other.m_encoding), m_is_embstr(other.m_is_embstr) {
+    FHString::FHString(FHString&& other) noexcept
+      : m_embstr_len(0), m_encoding(other.m_encoding), m_is_embstr(other.m_is_embstr) {
         if (m_is_embstr) {
             std::copy_n(other.m_embstr.begin(), other.m_embstr_len, m_embstr.begin());
             m_embstr_len = other.m_embstr_len;
@@ -744,6 +744,44 @@ namespace fasthash {
         }
 
         ok = true;
+        return result;
+    }
+
+    long double FHString::increment_float(long double inc) {
+        bool ok = false;
+        long double current = 0.0L;
+        if (!empty()) {
+            current = parse_ld(data(), size(), ok);
+            if (!ok) {
+                throw std::runtime_error("Value is not a valid float");
+            }
+        }
+
+        long double result = current + inc;
+        if (std::isnan(result) || std::isinf(result)) {
+            throw std::runtime_error("Resulting float is invalid (NaN or Inf)");
+        }
+
+        std::array<char, 128> buf{};
+        auto [ptr, ec] = std::to_chars(
+            buf.data(), buf.data() + buf.size(), result, std::chars_format::general, 17);
+
+        if (ec != std::errc{}) {
+            throw std::runtime_error("float to_chars failed");
+        }
+
+        std::string_view sv(buf.data(), ptr - buf.data());
+        if (auto dot = sv.find('.'); dot != std::string_view::npos) {
+            auto last_nonzero = sv.find_last_not_of('0');
+            if (last_nonzero != std::string_view::npos && last_nonzero > dot) {
+                sv.remove_suffix(sv.size() - (last_nonzero + 1));
+            }
+            if (!sv.empty() && sv.back() == '.') {
+                sv.remove_suffix(1);
+            }
+        }
+
+        *this = FHString(sv);
         return result;
     }
 }  // namespace fasthash
