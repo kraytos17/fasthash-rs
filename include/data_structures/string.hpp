@@ -28,9 +28,9 @@ namespace fasthash {
     public:
         /// Encoding types matching Redis implementation
         enum class Encoding : uint8_t {
-            INT, ///< Stored as 64-bit integer
-            RAW, ///< Stored as raw character buffer
-            EMBSTR ///< Embedded short string (SSO)
+            INT,  ///< Stored as 64-bit integer
+            RAW,  ///< Stored as raw character buffer
+            EMBSTR  ///< Embedded short string (SSO)
         };
 
         FHString() noexcept;
@@ -78,7 +78,7 @@ namespace fasthash {
             size_t length;
 
             RawString(std::unique_ptr<char[]> p, size_t cap, size_t len) :
-                ptr(std::move(p)), capacity(cap), length(len) {}
+              ptr(std::move(p)), capacity(cap), length(len) {}
         };
 
         std::array<char, EMBSTR_LIMIT> m_embstr;
@@ -115,4 +115,4 @@ namespace fasthash {
         int64_t parse_int(const char* s, size_t len, bool& ok) const;
         long double parse_ld(const char* s, size_t len, bool& ok) const;
     };
-} // namespace fasthash
+}  // namespace fasthash

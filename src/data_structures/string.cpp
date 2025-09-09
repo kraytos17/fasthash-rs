@@ -1,3 +1,5 @@
+#include "data_structures/string.hpp"
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -14,8 +16,6 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
-
-#include "data_structures/string.hpp"
 
 namespace fasthash {
     inline std::string to_chars_string(int64_t value) {
@@ -43,7 +43,7 @@ namespace fasthash {
     }
 
     FHString::FHString(std::string_view str) noexcept :
-        m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
+      m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
         if (str.size() <= EMBSTR_LIMIT) {
             std::copy(str.begin(), str.end(), m_embstr.begin());
             m_embstr_len = str.size();
@@ -65,7 +65,7 @@ namespace fasthash {
     }
 
     FHString::FHString(const FHString& other) :
-        m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
+      m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
         if (other.m_is_embstr) {
             std::copy_n(other.m_embstr.begin(), other.m_embstr_len, m_embstr.begin());
             m_embstr_len = other.m_embstr_len;
@@ -121,7 +121,7 @@ namespace fasthash {
     }
 
     FHString::FHString(FHString&& other) noexcept :
-        m_embstr_len(0), m_encoding(other.m_encoding), m_is_embstr(other.m_is_embstr) {
+      m_embstr_len(0), m_encoding(other.m_encoding), m_is_embstr(other.m_is_embstr) {
         if (m_is_embstr) {
             std::copy_n(other.m_embstr.begin(), other.m_embstr_len, m_embstr.begin());
             m_embstr_len = other.m_embstr_len;
@@ -169,8 +169,8 @@ namespace fasthash {
 
     FHString::~FHString() { free_raw_string(); }
 
-    constexpr std::strong_ordering
-    fasthash::FHString::operator<=>(const FHString& other) const noexcept {
+    constexpr std::strong_ordering fasthash::FHString::operator<=>(
+        const FHString& other) const noexcept {
         if (m_encoding == Encoding::INT && other.m_encoding == Encoding::INT) {
             return m_data.int_val <=> other.m_data.int_val;
         }
@@ -746,4 +746,4 @@ namespace fasthash {
         ok = true;
         return result;
     }
-} // namespace fasthash
+}  // namespace fasthash

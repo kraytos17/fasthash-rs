@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 #include "data_structures/string.hpp"
@@ -46,4 +47,4 @@ namespace fasthash {
         Node* ensure_head();
         Node* ensure_tail();
     };
-} // namespace fasthash
+}  // namespace fasthash
