@@ -1,9 +1,10 @@
 // Copyright 2025 Soubhik Gon
+#include "core/command.hpp"
+
 #include <charconv>
 #include <print>
 #include <string_view>
 
-#include "core/command.hpp"
 #include "core/parser.hpp"
 
 using namespace std::string_view_literals;
@@ -197,4 +198,4 @@ namespace fasthash {
                 break;
         }
     }
-} // namespace fasthash
+}  // namespace fasthash

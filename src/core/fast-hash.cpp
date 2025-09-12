@@ -15,8 +15,8 @@ using json = nlohmann::json;
 namespace chrono = std::chrono;
 
 namespace fasthash {
-    FastHash::FastHash(std::string_view aof_path, AOFSyncPolicy policy) :
-        m_aofLogger(std::string(aof_path), policy) {
+    FastHash::FastHash(std::string_view aof_path, AOFSyncPolicy policy)
+      : m_aofLogger(std::string(aof_path), policy) {
         m_ttlManager.set_expire_callback([this](const std::string& key) {
             std::scoped_lock lock(m_mtx);
             m_store.erase(key);
@@ -142,8 +142,8 @@ namespace fasthash {
         return -1;
     }
 
-    std::expected<std::string, std::string_view>
-    FastHash::build_regex_pattern(std::string_view pattern) const {
+    std::expected<std::string, std::string_view> FastHash::build_regex_pattern(
+        std::string_view pattern) const {
         try {
             std::string regex_pattern = std::regex_replace(
                 std::string{pattern}, std::regex{R"([\.\^\$\+\(\)\[\]\{\}])"}, R"(\$&)");
@@ -393,4 +393,4 @@ namespace fasthash {
 
         std::print("[INFO] AOF replayed {} commands\n", count);
     }
-} // namespace fasthash
+}  // namespace fasthash

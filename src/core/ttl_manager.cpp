@@ -13,8 +13,7 @@ namespace fasthash {
         }
     }
 
-    void TTLManager::add_expiration(std::string_view key,
-                                    std::chrono::steady_clock::time_point expire_time) {
+    void TTLManager::add_expiration(std::string_view key, TimePoint expire_time) {
         {
             std::lock_guard lock(m_mtx);
             auto [it, inserted] = m_expiryMap.try_emplace(std::string{key}, expire_time);
@@ -34,7 +33,7 @@ namespace fasthash {
     bool TTLManager::expired(std::string_view key) {
         std::lock_guard lock(m_mtx);
         if (auto it = m_expiryMap.find(std::string{key}); it != m_expiryMap.end()) {
-            if (std::chrono::steady_clock::now() >= it->second) {
+            if (Clock::now() >= it->second) {
                 m_expiryMap.erase(it);
                 return true;
             }
@@ -48,8 +47,7 @@ namespace fasthash {
         return m_expiryMap.contains(std::string{key});
     }
 
-    std::optional<std::chrono::steady_clock::time_point>
-    TTLManager::get_expiry_time(std::string_view key) const {
+    std::optional<TTLManager::TimePoint> TTLManager::get_expiry_time(std::string_view key) const {
         std::scoped_lock lock(m_mtx);
         if (auto it = m_expiryMap.find(std::string{key}); it != m_expiryMap.end()) {
             return it->second;
@@ -62,14 +60,9 @@ namespace fasthash {
         {
             std::scoped_lock lock(m_mtx);
             m_expiryMap.clear();
-            m_expiryHeap = decltype(m_expiryHeap){};
+            m_expiryHeap = ExpiryHeap{};
         }
         m_cv.notify_all();
-    }
-
-    void TTLManager::set_expire_callback(std::function<void(const std::string&)> cb) {
-        std::scoped_lock s(m_mtx);
-        on_expire_callback = std::move(cb);
     }
 
     void TTLManager::sweeper(std::stop_token token) {
@@ -84,27 +77,18 @@ namespace fasthash {
             }
 
             size_t processed = 0;
-            auto now = std::chrono::steady_clock::now();
+            auto now = Clock::now();
             while (processed < kBatchSize && !m_expiryHeap.empty()) {
                 const auto& next = m_expiryHeap.top();
-                if (auto it = m_expiryMap.find(next.key);
-                    it == m_expiryMap.end() || it->second != next.expire_time) {
+                auto it = m_expiryMap.find(next.key);
+                if (it == m_expiryMap.end() || it->second != next.expire_time) {
                     m_expiryHeap.pop();
                     continue;
                 }
 
                 if (now >= next.expire_time) {
-                    std::string expired_key = next.key;
+                    m_expiryMap.erase(it);
                     m_expiryHeap.pop();
-                    m_expiryMap.erase(expired_key);
-
-                    if (on_expire_callback) {
-                        auto callback = std::move(on_expire_callback);
-                        lock.unlock();
-                        callback(expired_key);
-                        lock.lock();
-                    }
-
                     ++processed;
                 } else {
                     auto wait_duration = next.expire_time - now;
@@ -118,4 +102,4 @@ namespace fasthash {
             }
         }
     }
-} // namespace fasthash
+}  // namespace fasthash

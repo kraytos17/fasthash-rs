@@ -31,4 +31,4 @@ namespace fasthash {
         AOFSyncPolicy m_syncPolicy{AOFSyncPolicy::ALWAYS};
         std::chrono::steady_clock::time_point m_lastSync;
     };
-} // namespace fasthash
+}  // namespace fasthash

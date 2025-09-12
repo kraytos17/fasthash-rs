@@ -22,8 +22,8 @@ namespace fasthash {
         TCPServer(TCPServer&&) noexcept = delete;
         TCPServer& operator=(TCPServer&&) noexcept = delete;
 
-        void start(); ///< Launch accept loop in background
-        void stop(); ///< Request stop + close socket
+        void start();  ///< Launch accept loop in background
+        void stop();  ///< Request stop + close socket
 
     private:
         uint16_t m_port;
@@ -35,4 +35,4 @@ namespace fasthash {
         void accept_clients(std::stop_token stoken);
         void handle_clients(std::stop_token stoken, Socket client);
     };
-} // namespace fasthash
+}  // namespace fasthash

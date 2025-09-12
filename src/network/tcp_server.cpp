@@ -1,3 +1,5 @@
+#include "network/tcp_server.hpp"
+
 #include <arpa/inet.h>
 #include <array>
 #include <print>
@@ -7,7 +9,6 @@
 #include <thread>
 
 #include "network/socket.hpp"
-#include "network/tcp_server.hpp"
 
 namespace fasthash {
     [[nodiscard]] std::string ip_to_string(const sockaddr_in& addr) noexcept {
@@ -133,4 +134,4 @@ namespace fasthash {
 
         std::print("[FastHash/TCP] Client disconnected.\n");
     }
-} // namespace fasthash
+}  // namespace fasthash

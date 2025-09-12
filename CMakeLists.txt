@@ -42,4 +42,15 @@ else()
     target_compile_options(FastHash PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+include(CTest)
 enable_testing()
+
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.tar.gz
+)
+set(INSTALL_GTEST OFF CACHE BOOL "Disable installation of googletest" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+add_subdirectory(tests)

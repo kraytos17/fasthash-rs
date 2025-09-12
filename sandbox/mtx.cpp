@@ -21,7 +21,6 @@ int main() {
         t1.join();
         t2.join();
 
-        if (counter != 20000)
-            std::cout << "Race detected: " << counter << std::endl;
+        if (counter != 20000) std::cout << "Race detected: " << counter << std::endl;
     }
 }

@@ -15,8 +15,10 @@ namespace fasthash {
         return *this;
     }
 
-    QuickList::QuickList(QuickList&& other) noexcept :
-        m_head(other.m_head), m_tail(other.m_tail), m_size(other.m_size),
+    QuickList::QuickList(QuickList&& other) noexcept
+      : m_head(other.m_head),
+        m_tail(other.m_tail),
+        m_size(other.m_size),
         m_node_cap(other.m_node_cap) {
         other.m_head = nullptr;
         other.m_tail = nullptr;

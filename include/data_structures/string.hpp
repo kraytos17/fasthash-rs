@@ -77,8 +77,8 @@ namespace fasthash {
             size_t capacity;
             size_t length;
 
-            RawString(std::unique_ptr<char[]> p, size_t cap, size_t len) :
-              ptr(std::move(p)), capacity(cap), length(len) {}
+            RawString(std::unique_ptr<char[]> p, size_t cap, size_t len)
+              : ptr(std::move(p)), capacity(cap), length(len) {}
         };
 
         std::array<char, EMBSTR_LIMIT> m_embstr;

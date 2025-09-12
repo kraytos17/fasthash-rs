@@ -1,12 +1,12 @@
+#include "persistence/aof/aof.hpp"
+
 #include <format>
 #include <print>
 #include <unistd.h>
 
-#include "persistence/aof/aof.hpp"
-
 namespace fasthash {
-    AOFLogger::AOFLogger(const std::string& path, AOFSyncPolicy policy) noexcept :
-        m_syncPolicy(policy), m_lastSync(std::chrono::steady_clock::now()) {
+    AOFLogger::AOFLogger(const std::string& path, AOFSyncPolicy policy) noexcept
+      : m_syncPolicy(policy), m_lastSync(std::chrono::steady_clock::now()) {
         m_cFile = std::fopen(path.c_str(), "a");
         if (!m_cFile) {
             log_error(std::format("Failed to open AOF file: {}", path));
@@ -78,4 +78,4 @@ namespace fasthash {
     void AOFLogger::log_error(const std::string& msg) const noexcept {
         std::print(stderr, "[AOF ERROR] {}\n", msg);
     }
-} // namespace fasthash
+}  // namespace fasthash

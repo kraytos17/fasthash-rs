@@ -36,4 +36,4 @@ namespace fasthash {
         [[nodiscard]] static Command parse(std::string_view line);
         void execute(FastHash& store) const;
     };
-} // namespace fasthash
+}  // namespace fasthash

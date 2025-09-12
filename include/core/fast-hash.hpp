@@ -59,9 +59,9 @@ namespace fasthash {
         std::atomic_bool m_isAofLoading{false};
         mutable std::jthread m_saveThread;
 
-        std::expected<std::string, std::string_view>
-        build_regex_pattern(std::string_view pattern) const;
+        std::expected<std::string, std::string_view> build_regex_pattern(
+            std::string_view pattern) const;
 
         void cleanup_expired_keys();
     };
-} // namespace fasthash
+}  // namespace fasthash

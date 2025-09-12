@@ -1,9 +1,9 @@
 // Copyright 2025 Soubhik Gon
+#include "core/parser.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <vector>
-
-#include "core/parser.hpp"
 
 namespace fasthash {
     namespace parser {
@@ -39,5 +39,5 @@ namespace fasthash {
 
             return result;
         }
-    } // namespace parser
-} // namespace fasthash
+    }  // namespace parser
+}  // namespace fasthash

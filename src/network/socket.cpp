@@ -1,7 +1,7 @@
+#include "network/socket.hpp"
+
 #include <sys/socket.h>
 #include <utility>
-
-#include "network/socket.hpp"
 
 namespace fasthash {
     Socket::Socket(int fd) noexcept : m_fd(fd) {}
@@ -38,4 +38,4 @@ namespace fasthash {
     ssize_t Socket::recv(std::span<std::byte> buffer, int flags) const noexcept {
         return ::recv(m_fd, buffer.data(), buffer.size_bytes(), flags);
     }
-} // namespace fasthash
+}  // namespace fasthash
