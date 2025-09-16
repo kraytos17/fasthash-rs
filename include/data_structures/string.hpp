@@ -46,7 +46,6 @@ namespace fasthash {
 
         constexpr std::strong_ordering operator<=>(const FHString& other) const noexcept;
         bool operator==(const FHString& other) const noexcept;
-        // explicit operator std::string_view() const noexcept;
 
         size_t append(const char* value, size_t len);
         int64_t increment(int64_t increment = 1);
@@ -54,7 +53,7 @@ namespace fasthash {
         void set_range(size_t offset, const char* data, size_t len);
         bool set_bit(size_t offset, bool on);
         bool get_bit(size_t offset) const;
-        size_t bit_count(size_t start = 0, size_t end = -1) const;
+        size_t bit_count(size_t start = 0, size_t end = SIZE_MAX) const;
 
         [[nodiscard]] size_t size() const noexcept;
         [[nodiscard]] bool empty() const noexcept;
@@ -101,7 +100,6 @@ namespace fasthash {
         void convert_to_raw();
         void ensure_capacity(size_t required);
         void materialize() const;
-        void free_raw_string();
 
         unsigned char* byte_ptr(size_t byte_offset);
         const unsigned char* byte_ptr(size_t byte_offset) const;
@@ -112,8 +110,8 @@ namespace fasthash {
         std::span<const unsigned char> get_bytes() const;
 
         size_t normalize_index(ssize_t idx, size_t length) const noexcept;
-        int64_t parse_int(const char* s, size_t len, bool& ok) const;
-        long double parse_ld(const char* s, size_t len, bool& ok) const;
+        std::optional<int64_t> parse_int(const char* s, size_t len) const;
+        std::optional<long double> parse_ld(const char* s, size_t len) const;
         long double increment_float(long double inc);
     };
 }  // namespace fasthash

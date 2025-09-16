@@ -4,7 +4,7 @@
 #include <optional>
 #include <vector>
 
-#include "data_structures/string.hpp"
+#include "string.hpp"
 
 namespace fasthash {
     class QuickList {

@@ -12,6 +12,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -35,8 +36,6 @@ namespace fasthash {
         }
         return ptr - buf.data();
     }
-
-    inline std::optional<int64_t> try_numeric(const fasthash::FHString& s) { return s.to_int(); }
 
     FHString::FHString() noexcept : m_embstr_len(0), m_encoding(Encoding::RAW), m_is_embstr(false) {
         m_data.int_val = 0;
@@ -167,7 +166,11 @@ namespace fasthash {
         return *this;
     }
 
-    FHString::~FHString() { free_raw_string(); }
+    FHString::~FHString() {
+        if (m_encoding == Encoding::RAW) {
+            std::destroy_at(&m_data.raw_str_val);
+        }
+    }
 
     constexpr std::strong_ordering fasthash::FHString::operator<=>(
         const FHString& other) const noexcept {
@@ -213,11 +216,9 @@ namespace fasthash {
                 std::string combined = int_str;
                 combined.append(value, len);
 
-                int64_t new_val;
-                bool ok;
-                new_val = parse_int(combined.data(), combined.size(), ok);
-                if (ok) {
-                    m_data.int_val = new_val;
+                auto new_val_opt = parse_int(combined.data(), combined.size());
+                if (new_val_opt) {
+                    m_data.int_val = new_val_opt.value();
                     return combined.size();
                 }
             }
@@ -264,16 +265,21 @@ namespace fasthash {
             val = res;
             return val;
         } else {
-            auto num = from_chars_span();
-            if (!num) {
-                throw std::runtime_error("Value is not an integer");
-            }
+            auto res = from_chars_span()
+                           .transform([&](int64_t v) {
+                               bool overflow = false;
+                               auto r = safe_add(v, inc, overflow);
+                               if (overflow) {
+                                   throw std::overflow_error("increment would overflow");
+                               }
+                               return r;
+                           })
+                           .or_else([] {
+                               throw std::runtime_error("Value is not an integer");
+                               return std::optional<int64_t>{};
+                           })
+                           .value();
 
-            bool overflow = false;
-            auto res = safe_add(num.value(), inc, overflow);
-            if (overflow) {
-                throw std::overflow_error("increment would overflow");
-            }
             if (!m_is_embstr && m_encoding == Encoding::RAW) {
                 std::destroy_at(&m_data.raw_str_val);
             }
@@ -529,12 +535,6 @@ namespace fasthash {
         }
     }
 
-    void FHString::free_raw_string() {
-        if (m_encoding == Encoding::RAW) {
-            std::destroy_at(&m_data.raw_str_val);
-        }
-    }
-
     unsigned char* FHString::byte_ptr(size_t byte_offset) {
         if (byte_offset >= size()) {
             return nullptr;
@@ -560,16 +560,13 @@ namespace fasthash {
             return m_data.int_val;
         }
 
-        const auto bytes = byte_span();
+        auto bytes = byte_span();
         if (bytes.empty()) {
             return std::nullopt;
         }
 
-        const char* s = reinterpret_cast<const char*>(bytes.data());
-        size_t len = bytes.size();
-        bool ok = false;
-        int64_t result = FHString::parse_int(s, len, ok);
-        return ok ? std::optional<int64_t>{result} : std::nullopt;
+        std::string_view sv{reinterpret_cast<const char*>(bytes.data()), bytes.size()};
+        return parse_int(sv.data(), sv.size());
     }
 
     std::span<unsigned char> FHString::get_bytes() {
@@ -608,54 +605,57 @@ namespace fasthash {
         return static_cast<size_t>(idx);
     }
 
-    int64_t FHString::parse_int(const char* s, size_t len, bool& ok) const {
-        ok = false;
+    std::optional<int64_t> FHString::parse_int(const char* s, size_t len) const {
         if (len == 0) {
-            return 0;
+            return std::nullopt;
         }
 
         size_t i = 0;
         bool negative = false;
         if (s[i] == '-') {
             negative = true;
-            i++;
+            ++i;
         } else if (s[i] == '+') {
-            i++;
+            ++i;
         }
 
         if (i == len) {
-            return 0;
+            return std::nullopt;
         }
 
-        int64_t result = 0;
+        std::optional<int64_t> result = int64_t{0};
         for (; i < len; ++i) {
             char c = s[i];
-            if (!std::isdigit(c)) {
-                return 0;
+            if (!std::isdigit(static_cast<unsigned char>(c))) {
+                return std::nullopt;
             }
 
-            int64_t digit = static_cast<int64_t>(c - '0');
-            if (negative) {
-                if (result < (std::numeric_limits<int64_t>::min() + digit) / 10) {
-                    return 0;
+            int64_t digit = c - '0';
+            result = result.and_then([&](int64_t r) -> std::optional<int64_t> {
+                if (negative) {
+                    if (r < (std::numeric_limits<int64_t>::min() + digit) / 10) {
+                        return std::nullopt;
+                    }
+                    return r * 10 - digit;
+                } else {
+                    if (r > (std::numeric_limits<int64_t>::max() - digit) / 10) {
+                        return std::nullopt;
+                    }
+                    return r * 10 + digit;
                 }
-                result = result * 10 - digit;
-            } else {
-                if (result > (std::numeric_limits<int64_t>::max() - digit) / 10) {
-                    return 0;
-                }
-                result = result * 10 + digit;
+            });
+
+            if (!result) {
+                return std::nullopt;
             }
         }
 
-        ok = true;
         return result;
     }
 
-    long double FHString::parse_ld(const char* s, size_t len, bool& ok) const {
-        ok = false;
+    std::optional<long double> FHString::parse_ld(const char* s, size_t len) const {
         if (len == 0) {
-            return 0.0L;
+            return std::nullopt;
         }
 
         size_t i = 0;
@@ -667,11 +667,11 @@ namespace fasthash {
             ++i;
         }
         if (i == len) {
-            return 0.0L;
+            return std::nullopt;
         }
 
-        unsigned __int128 int_part = 0;
         bool has_digits = false;
+        unsigned __int128 int_part = 0;
         while (i < len && std::isdigit(static_cast<unsigned char>(s[i]))) {
             has_digits = true;
             int_part = int_part * 10 + (s[i++] - '0');
@@ -688,18 +688,22 @@ namespace fasthash {
             }
         }
         if (!has_digits) {
-            return 0.0L;
+            return std::nullopt;
         }
 
-        long double result = static_cast<long double>(int_part);
-        if (frac_len > 0) {
-            static constexpr std::array<long double, 20> pow10_table = {
-                1e0L,  1e1L,  1e2L,  1e3L,  1e4L,  1e5L,  1e6L,  1e7L,  1e8L,  1e9L,
-                1e10L, 1e11L, 1e12L, 1e13L, 1e14L, 1e15L, 1e16L, 1e17L, 1e18L, 1e19L};
+        auto make_result = [&](unsigned __int128 ip, unsigned __int128 fp, size_t fl) {
+            long double result = static_cast<long double>(ip);
+            if (fl > 0) {
+                static constexpr std::array<long double, 20> pow10_table = {
+                    1e0L,  1e1L,  1e2L,  1e3L,  1e4L,  1e5L,  1e6L,  1e7L,  1e8L,  1e9L,
+                    1e10L, 1e11L, 1e12L, 1e13L, 1e14L, 1e15L, 1e16L, 1e17L, 1e18L, 1e19L};
 
-            result += static_cast<long double>(frac_part) / pow10_table[frac_len];
-        }
+                result += static_cast<long double>(fp) / pow10_table[fl];
+            }
+            return result;
+        };
 
+        std::optional<long double> result = make_result(int_part, frac_part, frac_len);
         if (i < len && (s[i] == 'e' || s[i] == 'E')) {
             ++i;
             bool exp_negative = false;
@@ -708,7 +712,7 @@ namespace fasthash {
                 ++i;
             }
             if (i == len || !std::isdigit(static_cast<unsigned char>(s[i]))) {
-                return 0.0L;
+                return std::nullopt;
             }
 
             int exp_val = 0;
@@ -719,42 +723,43 @@ namespace fasthash {
                 }
             }
 
-            long double pow10 = 1.0L;
-            long double base = 10.0L;
-            int e = exp_val;
-            while (e > 0) {
-                if (e & 1) {
-                    pow10 *= base;
+            result = result.and_then([&](long double r) -> std::optional<long double> {
+                long double pow10 = 1.0L;
+                long double base = 10.0L;
+                int e = exp_val;
+                while (e > 0) {
+                    if (e & 1) {
+                        pow10 *= base;
+                    }
+                    base *= base;
+                    e >>= 1;
                 }
-                base *= base;
-                e >>= 1;
+                return exp_negative ? r / pow10 : r * pow10;
+            });
+        }
+
+        return result.and_then([&](long double r) -> std::optional<long double> {
+            if (i != len) {
+                return std::nullopt;
             }
-
-            result = exp_negative ? result / pow10 : result * pow10;
-        }
-
-        if (i != len) {
-            return 0.0L;
-        }
-        if (negative) {
-            result = -result;
-        }
-        if (std::isnan(result) || std::isinf(result)) {
-            return 0.0L;
-        }
-
-        ok = true;
-        return result;
+            if (negative) {
+                r = -r;
+            }
+            if (std::isnan(r) || std::isinf(r)) {
+                return std::nullopt;
+            }
+            return r;
+        });
     }
 
     long double FHString::increment_float(long double inc) {
-        bool ok = false;
         long double current = 0.0L;
         if (!empty()) {
-            current = parse_ld(data(), size(), ok);
-            if (!ok) {
+            auto current_opt = parse_ld(data(), size());
+            if (!current_opt) {
                 throw std::runtime_error("Value is not a valid float");
             }
+            current = current_opt.value();
         }
 
         long double result = current + inc;
@@ -765,15 +770,14 @@ namespace fasthash {
         std::array<char, 128> buf{};
         auto [ptr, ec] = std::to_chars(
             buf.data(), buf.data() + buf.size(), result, std::chars_format::general, 17);
-
         if (ec != std::errc{}) {
             throw std::runtime_error("float to_chars failed");
         }
 
         std::string_view sv(buf.data(), ptr - buf.data());
-        if (auto dot = sv.find('.'); dot != std::string_view::npos) {
+        if (auto dot_pos = sv.find('.'); dot_pos != std::string_view::npos) {
             auto last_nonzero = sv.find_last_not_of('0');
-            if (last_nonzero != std::string_view::npos && last_nonzero > dot) {
+            if (last_nonzero != std::string_view::npos && last_nonzero > dot_pos) {
                 sv.remove_suffix(sv.size() - (last_nonzero + 1));
             }
             if (!sv.empty() && sv.back() == '.') {
