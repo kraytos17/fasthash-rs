@@ -399,12 +399,21 @@ namespace fasthash {
     bool FHString::empty() const noexcept { return size() == 0; }
 
     const char* FHString::data() const noexcept {
-        materialize();
-        if (m_is_embstr) {
-            return m_embstr.data();
-        }
-        if (m_encoding == Encoding::RAW) {
-            return m_data.raw_str_val.ptr.get();
+        switch (m_encoding) {
+            case Encoding::EMBSTR:
+                return m_embstr.data();
+            case Encoding::RAW:
+                return m_data.raw_str_val.ptr.get();
+            case Encoding::INT: {
+                auto [ptr, ec] = std::to_chars(
+                    m_tmp_buf.data(), m_tmp_buf.data() + m_tmp_buf.size(), m_data.int_val);
+                if (ec != std::errc{}) {
+                    return nullptr;
+                }
+
+                m_tmp_buf_len = ptr - m_tmp_buf.data();
+                return m_tmp_buf.data();
+            }
         }
         return nullptr;
     }
@@ -529,9 +538,9 @@ namespace fasthash {
         raw.capacity = new_cap;
     }
 
-    void FHString::materialize() const {
+    void FHString::materialize() {
         if (m_encoding == Encoding::INT) {
-            const_cast<FHString*>(this)->convert_to_raw();
+            convert_to_raw();
         }
     }
 
@@ -666,6 +675,7 @@ namespace fasthash {
         } else if (s[i] == '+') {
             ++i;
         }
+
         if (i == len) {
             return std::nullopt;
         }

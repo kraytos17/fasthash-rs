@@ -99,7 +99,7 @@ namespace fasthash {
 
         void convert_to_raw();
         void ensure_capacity(size_t required);
-        void materialize() const;
+        void materialize();
 
         unsigned char* byte_ptr(size_t byte_offset);
         const unsigned char* byte_ptr(size_t byte_offset) const;
