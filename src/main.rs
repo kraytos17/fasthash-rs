@@ -11,7 +11,7 @@ use crate::persistence::{
     aof::{self, AofWriter},
     rdb,
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -72,7 +72,6 @@ async fn main() -> Result<()> {
 
     let addr = format!("{}:{}", args.host, args.port);
     let store = Arc::new(store::db::KvStore::new());
-
     if args.load_rdb {
         tracing::info!("Loading RDB from {:?}", args.rdb_file);
         rdb::load(&store, &args.rdb_file)?;
@@ -89,13 +88,16 @@ async fn main() -> Result<()> {
         }
     }
 
-    let aof = AofWriter::new(&args.aof_file, args.aof_sync.into())?;
-    let server = network::server::Server::new(addr.parse()?, store, aof, args.rdb_file);
+    let aof = AofWriter::new(&args.aof_file, args.aof_sync.into())
+        .context("Failed to create AOF writer")?;
+    let server = network::server::Server::new(
+        addr.parse().context("Failed to parse address")?,
+        store,
+        aof,
+        args.rdb_file,
+    );
 
-    server
-        .run()
-        .await
-        .map_err(|e| anyhow::anyhow!("Server error: {e:?}"))?;
+    server.run().await.context("Server error")?;
 
     Ok(())
 }

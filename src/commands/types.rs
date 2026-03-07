@@ -1,9 +1,7 @@
 //! Command and response types for `FastHash`.
 
-use serde::{Deserialize, Serialize};
-
 /// Commands supported by `FastHash`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum Command {
     /// PING command
     Ping,
@@ -40,7 +38,7 @@ pub enum Command {
 }
 
 /// Responses from `FastHash` commands.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Response {
     /// OK response
     Ok,
