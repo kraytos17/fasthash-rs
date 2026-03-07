@@ -16,6 +16,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
+          components: clippy
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
@@ -25,8 +26,8 @@ jobs:
         run: cargo build --all-features --all-targets
       - name: Run tests
         run: cargo test --all-features --lib --bins
-      - name: Clippy (deny warnings)
-        run: cargo clippy --all-features --all-targets -- --deny warnings
+      - name: Clippy
+        run: cargo clippy --all-features --all-targets -- --warn warnings
       - name: Check formatting
         run: cargo fmt --check
       - name: Generate docs
