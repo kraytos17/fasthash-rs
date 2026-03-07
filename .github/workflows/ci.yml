@@ -1,34 +1,57 @@
 name: CI
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         rust: [1.94.0, stable]
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Rust ${{ matrix.rust }}
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           components: clippy, rustfmt
+
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
-          path: ~/.cargo
+          path: |
+            ~/.cargo
+            target
           key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.rust }}-
+            ${{ runner.os }}-cargo-
+
       - name: Build
         run: cargo build --all-features --all-targets
+
       - name: Run tests
         run: cargo test --all-features --lib --bins
+
       - name: Clippy
         run: cargo clippy --all-features --all-targets -- --warn warnings
+
       - name: Check formatting
         run: cargo fmt --check || true
+
       - name: Generate docs
-        run: cargo doc --no-deps --all-features
+        run: cargo doc --no-deps --all-features --document-private-items

@@ -1,19 +1,39 @@
 name: Security Audit
+
 on:
   schedule:
-    - cron: "0 0 * * 0" # Weekly on Sunday
+    - cron: "0 0 * * 0"  # Weekly on Sunday
   push:
     paths:
       - "Cargo.lock"
       - "Cargo.toml"
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: stable
           components: rustfmt
+
       - name: Run cargo audit
         run: cargo audit
+
+      - name: Run cargo outdated
+        run: cargo outdated --exit-code 0 || true
