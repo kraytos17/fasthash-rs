@@ -164,7 +164,13 @@ mod tests {
             crate::persistence::aof::AofSync::No,
         )
         .unwrap();
-        let server = Server::new(addr, store.clone(), list_store.clone(), aof, PathBuf::from("test.rdb"));
+        let server = Server::new(
+            addr,
+            store.clone(),
+            list_store.clone(),
+            aof,
+            PathBuf::from("test.rdb"),
+        );
 
         tokio::spawn(async move {
             let _ = server.run().await;
@@ -194,7 +200,13 @@ mod tests {
         )
         .unwrap();
 
-        let server = Server::new(addr, store.clone(), list_store.clone(), aof, PathBuf::from("test.rdb"));
+        let server = Server::new(
+            addr,
+            store.clone(),
+            list_store.clone(),
+            aof,
+            PathBuf::from("test.rdb"),
+        );
         tokio::spawn(async move {
             let _ = server.run().await;
         });
