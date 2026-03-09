@@ -1,0 +1,12 @@
+[package]
+name = "fasthash-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fasthash = { path = "../fasthash" }
+tokio.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

@@ -2,17 +2,13 @@
 //!
 //! A high-performance, in-memory key-value store compatible with Redis RESP2 protocol.
 
-mod commands;
-mod network;
-mod persistence;
-mod store;
-
-use crate::persistence::{
+use anyhow::{Context, Result};
+use clap::{Parser, ValueEnum};
+use fasthash::persistence::{
     aof::{self, AofWriter},
     rdb,
 };
-use anyhow::{Context, Result};
-use clap::{Parser, ValueEnum};
+use fasthash::store::{db::KvStore, list::ListStore};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -47,7 +43,7 @@ enum AofSync {
     No,
 }
 
-impl From<AofSync> for persistence::aof::AofSync {
+impl From<AofSync> for fasthash::persistence::aof::AofSync {
     fn from(s: AofSync) -> Self {
         match s {
             AofSync::Always => Self::Always,
@@ -60,7 +56,6 @@ impl From<AofSync> for persistence::aof::AofSync {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(tracing_subscriber::EnvFilter::new(
@@ -71,8 +66,8 @@ async fn main() -> Result<()> {
     tracing::info!("Starting FastHash server on {}:{}", args.host, args.port);
 
     let addr = format!("{}:{}", args.host, args.port);
-    let store = Arc::new(store::db::KvStore::new());
-    let list_store = Arc::new(store::list::ListStore::new());
+    let store = Arc::new(KvStore::new());
+    let list_store = Arc::new(ListStore::new());
     if args.load_rdb {
         tracing::info!("Loading RDB from {:?}", args.rdb_file);
         rdb::load(&store, &list_store, &args.rdb_file)?;
@@ -91,7 +86,8 @@ async fn main() -> Result<()> {
 
     let aof = AofWriter::new(&args.aof_file, args.aof_sync.into())
         .context("Failed to create AOF writer")?;
-    let server = network::server::Server::new(
+
+    let server = fasthash::network::server::Server::new(
         addr.parse().context("Failed to parse address")?,
         store,
         list_store,
@@ -100,6 +96,5 @@ async fn main() -> Result<()> {
     );
 
     server.run().await.context("Server error")?;
-
     Ok(())
 }

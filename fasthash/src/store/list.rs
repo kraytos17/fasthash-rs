@@ -56,7 +56,7 @@ impl ListStore {
             None => Vec::new(),
         };
 
-        for mut value in values {
+        for value in values {
             list.insert(0, value);
         }
 
@@ -300,6 +300,7 @@ impl ListStore {
 
 #[cfg(test)]
 mod tests {
+    #![allow(unused_must_use)]
     use super::*;
 
     #[test]
@@ -405,7 +406,7 @@ mod tests {
     #[test]
     fn test_del() {
         let store = ListStore::new();
-        store.lpush("mylist", vec!["value".into()]);
+        _ = store.lpush("mylist", vec!["value".into()]);
         assert!(store.del("mylist"));
         assert!(!store.exists("mylist"));
     }
@@ -419,7 +420,7 @@ mod tests {
     #[test]
     fn test_lrange_start_greater_than_stop() {
         let store = ListStore::new();
-        store.rpush("mylist", vec!["one".into(), "two".into()]);
+        _ = store.rpush("mylist", vec!["one".into(), "two".into()]);
         assert_eq!(store.lrange("mylist", 2, 1), Vec::<String>::new());
     }
 }

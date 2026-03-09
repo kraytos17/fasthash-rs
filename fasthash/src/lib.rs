@@ -6,4 +6,4 @@ pub mod store;
 pub use commands::{handler, parser, types};
 pub use network::{codec, server};
 pub use persistence::{aof, rdb};
-pub use store::{db, ttl};
+pub use store::{db, list, ttl};

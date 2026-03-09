@@ -168,15 +168,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "fasthash-rs"
+name = "fasthash"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes",
- "clap",
  "dashmap",
  "tempfile",
  "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "fasthash-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "fasthash",
  "tokio",
  "tracing",
  "tracing-subscriber",
