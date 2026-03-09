@@ -114,6 +114,7 @@ impl Drop for AofWriter {
 /// Replays commands from an AOF file onto a key-value store.
 pub fn replay(
     store: &crate::store::db::KvStore,
+    list_store: &crate::store::list::ListStore,
     aof_path: &PathBuf,
 ) -> Result<u64, std::io::Error> {
     if !aof_path.exists() {
@@ -136,7 +137,7 @@ pub fn replay(
 
         if line.starts_with('*') {
             if let Some(cmd) = parse_resp_command(&lines, i) {
-                execute_command(store, &cmd);
+                execute_command(store, list_store, &cmd);
                 commands_replayed += 1;
                 i = cmd.end_index;
             } else {
@@ -211,7 +212,11 @@ struct CommandParts {
     end_index: usize,
 }
 
-fn execute_command(store: &crate::store::db::KvStore, cmd: &CommandParts) {
+fn execute_command(
+    store: &crate::store::db::KvStore,
+    list_store: &crate::store::list::ListStore,
+    cmd: &CommandParts,
+) {
     let args: Vec<String> = cmd
         .args
         .iter()
@@ -253,6 +258,25 @@ fn execute_command(store: &crate::store::db::KvStore, cmd: &CommandParts) {
         let key = args[1].trim_end_matches('\r').to_string();
         let seconds: u64 = args[2].trim_end_matches('\r').parse().unwrap_or(0);
         let _ = store.expire(&key, seconds);
+    } else if cmd_name == "LPUSH" && args.len() >= 3 {
+        let key = args[1].trim_end_matches('\r').to_string();
+        let values: Vec<String> = args[2..]
+            .iter()
+            .map(|s| s.trim_end_matches('\r').to_string())
+            .collect();
+        let _ = list_store.lpush(&key, values);
+    } else if cmd_name == "RPUSH" && args.len() >= 3 {
+        let key = args[1].trim_end_matches('\r').to_string();
+        let values: Vec<String> = args[2..]
+            .iter()
+            .map(|s| s.trim_end_matches('\r').to_string())
+            .collect();
+        let _ = list_store.rpush(&key, values);
+    } else if cmd_name == "LTRIM" && args.len() >= 4 {
+        let key = args[1].trim_end_matches('\r').to_string();
+        let start: i64 = args[2].trim_end_matches('\r').parse().unwrap_or(0);
+        let stop: i64 = args[3].trim_end_matches('\r').parse().unwrap_or(-1);
+        let _ = list_store.ltrim(&key, start, stop);
     }
 }
 

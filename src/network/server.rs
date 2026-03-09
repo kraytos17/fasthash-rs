@@ -6,6 +6,7 @@ use crate::commands::{handler::CommandHandler, parser::RespParser, types::Respon
 use crate::network::codec::encode_response;
 use crate::persistence::aof::AofWriter;
 use crate::store::db::KvStore;
+use crate::store::list::ListStore;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,6 +30,7 @@ pub enum ServerError {
 pub struct Server {
     addr: std::net::SocketAddr,
     store: Arc<KvStore>,
+    list_store: Arc<ListStore>,
     aof: Option<Arc<AofWriter>>,
     rdb_path: PathBuf,
 }
@@ -39,12 +41,14 @@ impl Server {
     pub fn new(
         addr: std::net::SocketAddr,
         store: Arc<KvStore>,
+        list_store: Arc<ListStore>,
         aof: AofWriter,
         rdb_path: PathBuf,
     ) -> Self {
         Self {
             addr,
             store,
+            list_store,
             aof: Some(Arc::new(aof)),
             rdb_path,
         }
@@ -60,6 +64,7 @@ impl Server {
         info!("Server listening on {}", self.addr);
         let rdb_path = self.rdb_path.clone();
         let aof = self.aof.clone();
+        let list_store = self.list_store.clone();
         loop {
             let (socket, addr) = listener.accept().await?;
             info!("Client connected: {}", addr);
@@ -67,6 +72,7 @@ impl Server {
             tokio::spawn(handle_connection(
                 socket,
                 store,
+                list_store.clone(),
                 rdb_path.clone(),
                 aof.clone(),
             ));
@@ -77,12 +83,13 @@ impl Server {
 async fn handle_connection(
     socket: TcpStream,
     store: Arc<KvStore>,
+    list_store: Arc<ListStore>,
     rdb_path: PathBuf,
     aof: Option<Arc<AofWriter>>,
 ) -> Result<(), Error> {
     let (mut read, mut write) = socket.into_split();
     let mut parser = RespParser::new();
-    let handler = CommandHandler::new(store, rdb_path, aof);
+    let handler = CommandHandler::new(store, list_store, rdb_path, aof);
     let mut buffer = vec![0u8; 4096];
     loop {
         match read.read(&mut buffer).await {
@@ -151,12 +158,13 @@ mod tests {
     async fn test_ping() {
         let addr = get_free_addr().await;
         let store = Arc::new(KvStore::new());
+        let list_store = Arc::new(ListStore::new());
         let aof = AofWriter::new(
             &PathBuf::from("test.aof"),
             crate::persistence::aof::AofSync::No,
         )
         .unwrap();
-        let server = Server::new(addr, store.clone(), aof, PathBuf::from("test.rdb"));
+        let server = Server::new(addr, store.clone(), list_store.clone(), aof, PathBuf::from("test.rdb"));
 
         tokio::spawn(async move {
             let _ = server.run().await;
@@ -179,13 +187,14 @@ mod tests {
     async fn test_set_get() {
         let addr = get_free_addr().await;
         let store = Arc::new(KvStore::new());
+        let list_store = Arc::new(ListStore::new());
         let aof = AofWriter::new(
             &PathBuf::from("test.aof"),
             crate::persistence::aof::AofSync::No,
         )
         .unwrap();
 
-        let server = Server::new(addr, store.clone(), aof, PathBuf::from("test.rdb"));
+        let server = Server::new(addr, store.clone(), list_store.clone(), aof, PathBuf::from("test.rdb"));
         tokio::spawn(async move {
             let _ = server.run().await;
         });

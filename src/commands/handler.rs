@@ -6,6 +6,7 @@ use crate::commands::types::{Command, Response};
 use crate::persistence::aof::AofWriter;
 use crate::persistence::rdb;
 use crate::store::db::KvStore;
+use crate::store::list::ListStore;
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,6 +14,7 @@ use std::sync::Arc;
 /// Handles command execution for the key-value store.
 pub struct CommandHandler {
     store: Arc<KvStore>,
+    list_store: Arc<ListStore>,
     rdb_path: PathBuf,
     aof: Option<Arc<AofWriter>>,
 }
@@ -20,9 +22,15 @@ pub struct CommandHandler {
 impl CommandHandler {
     /// Creates a new handler with the given store.
     #[must_use]
-    pub const fn new(store: Arc<KvStore>, rdb_path: PathBuf, aof: Option<Arc<AofWriter>>) -> Self {
+    pub const fn new(
+        store: Arc<KvStore>,
+        list_store: Arc<ListStore>,
+        rdb_path: PathBuf,
+        aof: Option<Arc<AofWriter>>,
+    ) -> Self {
         Self {
             store,
+            list_store,
             rdb_path,
             aof,
         }
@@ -97,7 +105,7 @@ impl CommandHandler {
             Command::Save { path } => {
                 let save_path = path.map_or_else(|| self.rdb_path.clone(), PathBuf::from);
                 self.log_to_aof(b"*1\r\n$4\r\nSAVE\r\n");
-                match rdb::save(&self.store, &save_path) {
+                match rdb::save(&self.store, &self.list_store, &save_path) {
                     Ok(()) => Response::Ok,
                     Err(e) => Response::Error(format!("ERR saving RDB: {e}")),
                 }
@@ -106,9 +114,77 @@ impl CommandHandler {
                 let load_path = path.map_or_else(|| self.rdb_path.clone(), PathBuf::from);
                 self.log_to_aof(b"*1\r\n$4\r\nLOAD\r\n");
                 self.store.flushall();
-                match rdb::load(&self.store, &load_path) {
+                match rdb::load(&self.store, &self.list_store, &load_path) {
                     Ok(()) => Response::Ok,
                     Err(e) => Response::Error(format!("ERR loading RDB: {e}")),
+                }
+            }
+
+            // ============ LIST COMMANDS ============
+            Command::Lpush { key, values } => {
+                let cmd_bytes = encode_lpush_command(&key, &values);
+                self.log_to_aof(&cmd_bytes);
+                let len = self.list_store.lpush(&key, values);
+                Response::Integer(len as i64)
+            }
+            Command::Rpush { key, values } => {
+                let cmd_bytes = encode_rpush_command(&key, &values);
+                self.log_to_aof(&cmd_bytes);
+                let len = self.list_store.rpush(&key, values);
+                Response::Integer(len as i64)
+            }
+            Command::Lpop { key, count } => {
+                let cmd_bytes = encode_lpop_command(&key, count);
+                self.log_to_aof(&cmd_bytes);
+                let (removed, _) = self.list_store.lpop(&key, count);
+                if removed.is_empty() {
+                    Response::Null
+                } else if removed.len() == 1 {
+                    Response::BulkString(removed[0].clone())
+                } else {
+                    Response::Array(removed)
+                }
+            }
+            Command::Rpop { key, count } => {
+                let cmd_bytes = encode_rpop_command(&key, count);
+                self.log_to_aof(&cmd_bytes);
+                let (removed, _) = self.list_store.rpop(&key, count);
+                if removed.is_empty() {
+                    Response::Null
+                } else if removed.len() == 1 {
+                    Response::BulkString(removed[0].clone())
+                } else {
+                    Response::Array(removed)
+                }
+            }
+            Command::Lrange { key, start, stop } => {
+                let elements = self.list_store.lrange(&key, start, stop);
+                Response::Array(elements)
+            }
+            Command::Llen { key } => {
+                let len = self.list_store.llen(&key);
+                Response::Integer(len as i64)
+            }
+            Command::Lindex { key, index } => self
+                .list_store
+                .lindex(&key, index)
+                .map_or(Response::Null, Response::BulkString),
+            Command::Lset { key, index, value } => {
+                let cmd_bytes = encode_lset_command(&key, index, &value);
+                self.log_to_aof(&cmd_bytes);
+                if self.list_store.lset(&key, index, value) {
+                    Response::Ok
+                } else {
+                    Response::Error("ERR index out of range".to_string())
+                }
+            }
+            Command::Ltrim { key, start, stop } => {
+                let cmd_bytes = encode_ltrim_command(&key, start, stop);
+                self.log_to_aof(&cmd_bytes);
+                if self.list_store.ltrim(&key, start, stop) {
+                    Response::Ok
+                } else {
+                    Response::Error("ERR error".to_string())
                 }
             }
         }
@@ -176,6 +252,69 @@ fn encode_expire_command(key: &str, seconds: u64) -> Vec<u8> {
     .into_bytes()
 }
 
+fn encode_lpush_command(key: &str, values: &[String]) -> Vec<u8> {
+    let mut cmd = format!(
+        "*{}\r\n$5\r\nLPUSH\r\n${}\r\n{}\r\n",
+        2 + values.len(),
+        key.len(),
+        key
+    );
+    for value in values {
+        let _ = write!(cmd, "${}\r\n{}\r\n", value.len(), value);
+    }
+    cmd.into_bytes()
+}
+
+fn encode_rpush_command(key: &str, values: &[String]) -> Vec<u8> {
+    let mut cmd = format!(
+        "*{}\r\n$5\r\nRPUSH\r\n${}\r\n{}\r\n",
+        2 + values.len(),
+        key.len(),
+        key
+    );
+    for value in values {
+        let _ = write!(cmd, "${}\r\n{}\r\n", value.len(), value);
+    }
+    cmd.into_bytes()
+}
+
+fn encode_lpop_command(key: &str, count: Option<u64>) -> Vec<u8> {
+    count.map_or_else(
+        || format!("*2\r\n$4\r\nLPOP\r\n${}\r\n{}\r\n", key.len(), key).into_bytes(),
+        |c| format!("*3\r\n$4\r\nLPOP\r\n${}\r\n{}\r\n{}\r\n", key.len(), key, c).into_bytes(),
+    )
+}
+
+fn encode_rpop_command(key: &str, count: Option<u64>) -> Vec<u8> {
+    count.map_or_else(
+        || format!("*2\r\n$4\r\nRPOP\r\n${}\r\n{}\r\n", key.len(), key).into_bytes(),
+        |c| format!("*3\r\n$4\r\nRPOP\r\n${}\r\n{}\r\n{}\r\n", key.len(), key, c).into_bytes(),
+    )
+}
+
+fn encode_lset_command(key: &str, index: i64, value: &str) -> Vec<u8> {
+    format!(
+        "*4\r\n$4\r\nLSET\r\n${}\r\n{}\r\n{}\r\n${}\r\n{}\r\n",
+        key.len(),
+        key,
+        index,
+        value.len(),
+        value
+    )
+    .into_bytes()
+}
+
+fn encode_ltrim_command(key: &str, start: i64, stop: i64) -> Vec<u8> {
+    format!(
+        "*4\r\n$5\r\nLTRIM\r\n${}\r\n{}\r\n{}\r\n{}\r\n",
+        key.len(),
+        key,
+        start,
+        stop
+    )
+    .into_bytes()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,7 +322,8 @@ mod tests {
     use std::sync::Arc;
 
     fn make_handler(store: Arc<KvStore>) -> CommandHandler {
-        CommandHandler::new(store, PathBuf::from("test.rdb"), None)
+        let list_store = Arc::new(ListStore::new());
+        CommandHandler::new(store, list_store, PathBuf::from("test.rdb"), None)
     }
 
     #[tokio::test]
@@ -361,7 +501,9 @@ mod tests {
         let rdb_path = temp_dir.path().join("test.rdb");
 
         let store = Arc::new(KvStore::new());
-        let handler = CommandHandler::new(store.clone(), rdb_path.clone(), None);
+        let list_store = Arc::new(ListStore::new());
+        let handler =
+            CommandHandler::new(store.clone(), list_store.clone(), rdb_path.clone(), None);
 
         handler.handle(Command::Set {
             key: "key1".into(),
@@ -381,7 +523,13 @@ mod tests {
         assert_eq!(result, Response::Ok);
 
         let load_store = Arc::new(KvStore::new());
-        let load_handler = CommandHandler::new(load_store.clone(), rdb_path.clone(), None);
+        let load_list_store = Arc::new(ListStore::new());
+        let load_handler = CommandHandler::new(
+            load_store.clone(),
+            load_list_store.clone(),
+            rdb_path.clone(),
+            None,
+        );
 
         let load_cmd = Command::Load {
             path: Some(rdb_path.to_string_lossy().into_owned()),

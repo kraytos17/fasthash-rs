@@ -35,6 +35,30 @@ pub enum Command {
     Save { path: Option<String> },
     /// LOAD - Load database from disk
     Load { path: Option<String> },
+
+    // ============ LIST COMMANDS ============
+    /// LPUSH key value [value ...]
+    Lpush { key: String, values: Vec<String> },
+    /// RPUSH key value [value ...]
+    Rpush { key: String, values: Vec<String> },
+    /// LPOP key [count]
+    Lpop { key: String, count: Option<u64> },
+    /// RPOP key [count]
+    Rpop { key: String, count: Option<u64> },
+    /// LRANGE key start stop
+    Lrange { key: String, start: i64, stop: i64 },
+    /// LLEN key
+    Llen { key: String },
+    /// LINDEX key index
+    Lindex { key: String, index: i64 },
+    /// LSET key index value
+    Lset {
+        key: String,
+        index: i64,
+        value: String,
+    },
+    /// LTRIM key start stop
+    Ltrim { key: String, start: i64, stop: i64 },
 }
 
 /// Responses from `FastHash` commands.

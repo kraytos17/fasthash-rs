@@ -63,6 +63,16 @@ impl RespValue {
             "TTL" => Self::parse_ttl(&args)?,
             "SAVE" => Self::parse_save(&args)?,
             "LOAD" => Self::parse_load(&args)?,
+            // List commands
+            "LPUSH" => Self::parse_lpush(&args)?,
+            "RPUSH" => Self::parse_rpush(&args)?,
+            "LPOP" => Self::parse_lpop(&args)?,
+            "RPOP" => Self::parse_rpop(&args)?,
+            "LRANGE" => Self::parse_lrange(&args)?,
+            "LLEN" => Self::parse_llen(&args)?,
+            "LINDEX" => Self::parse_lindex(&args)?,
+            "LSET" => Self::parse_lset(&args)?,
+            "LTRIM" => Self::parse_ltrim(&args)?,
             _ => return None,
         })
     }
@@ -168,6 +178,115 @@ impl RespValue {
         }
         let path = args.first().cloned();
         Some(Command::Load { path })
+    }
+
+    // ============ LIST PARSERS ============
+    fn parse_lpush(args: &[String]) -> Option<Command> {
+        if args.len() < 2 {
+            return None;
+        }
+        Some(Command::Lpush {
+            key: args[0].clone(),
+            values: args[1..].to_vec(),
+        })
+    }
+
+    fn parse_rpush(args: &[String]) -> Option<Command> {
+        if args.len() < 2 {
+            return None;
+        }
+        Some(Command::Rpush {
+            key: args[0].clone(),
+            values: args[1..].to_vec(),
+        })
+    }
+
+    fn parse_lpop(args: &[String]) -> Option<Command> {
+        if args.is_empty() {
+            return None;
+        }
+        let count = if args.len() > 1 {
+            args[1].parse().ok()
+        } else {
+            None
+        };
+        Some(Command::Lpop {
+            key: args[0].clone(),
+            count,
+        })
+    }
+
+    fn parse_rpop(args: &[String]) -> Option<Command> {
+        if args.is_empty() {
+            return None;
+        }
+        let count = if args.len() > 1 {
+            args[1].parse().ok()
+        } else {
+            None
+        };
+        Some(Command::Rpop {
+            key: args[0].clone(),
+            count,
+        })
+    }
+
+    fn parse_lrange(args: &[String]) -> Option<Command> {
+        if args.len() < 3 {
+            return None;
+        }
+        let start: i64 = args[1].parse().ok()?;
+        let stop: i64 = args[2].parse().ok()?;
+        Some(Command::Lrange {
+            key: args[0].clone(),
+            start,
+            stop,
+        })
+    }
+
+    fn parse_llen(args: &[String]) -> Option<Command> {
+        if args.len() != 1 {
+            return None;
+        }
+        Some(Command::Llen {
+            key: args[0].clone(),
+        })
+    }
+
+    fn parse_lindex(args: &[String]) -> Option<Command> {
+        if args.len() != 2 {
+            return None;
+        }
+        let index: i64 = args[1].parse().ok()?;
+        Some(Command::Lindex {
+            key: args[0].clone(),
+            index,
+        })
+    }
+
+    fn parse_lset(args: &[String]) -> Option<Command> {
+        if args.len() != 3 {
+            return None;
+        }
+        let index: i64 = args[1].parse().ok()?;
+        Some(Command::Lset {
+            key: args[0].clone(),
+            index,
+            value: args[2].clone(),
+        })
+    }
+
+    fn parse_ltrim(args: &[String]) -> Option<Command> {
+        if args.len() < 3 {
+            return None;
+        }
+        let start: i64 = args[1].parse().ok()?;
+        let stop: i64 = args[2].parse().ok()?;
+        Some(Command::Ltrim {
+            key: args[0].clone(),
+            start,
+            stop,
+        })
     }
 }
 

@@ -72,13 +72,14 @@ async fn main() -> Result<()> {
 
     let addr = format!("{}:{}", args.host, args.port);
     let store = Arc::new(store::db::KvStore::new());
+    let list_store = Arc::new(store::list::ListStore::new());
     if args.load_rdb {
         tracing::info!("Loading RDB from {:?}", args.rdb_file);
-        rdb::load(&store, &args.rdb_file)?;
+        rdb::load(&store, &list_store, &args.rdb_file)?;
     }
 
     tracing::info!("Replaying AOF from {:?}", args.aof_file);
-    match aof::replay(&store, &args.aof_file) {
+    match aof::replay(&store, &list_store, &args.aof_file) {
         Ok(count) if count > 0 => {
             tracing::info!("Replayed {} commands from AOF", count);
         }
@@ -93,6 +94,7 @@ async fn main() -> Result<()> {
     let server = network::server::Server::new(
         addr.parse().context("Failed to parse address")?,
         store,
+        list_store,
         aof,
         args.rdb_file,
     );
